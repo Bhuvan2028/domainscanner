@@ -1,0 +1,65 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# TypeScript v1-v2
+typings/
+
+# Next.js
+.next/
+out/
+
+# Build artifacts
+build/
+dist/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env.local
+
+# Docker
+.docker/
+
+# Go/Backend specific
+bin/
+obj/
+*.exe
+*.test
+*.prof
+
+# Project specific clutter
+*.zip
+*.docx
+*.pdf
+logo_isecurify.svg (if not needed)
+Bhuvn Agents/ (if not needed)
+
+# Others
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
