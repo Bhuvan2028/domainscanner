@@ -1,10 +1,7 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
 import { SidebarProvider } from '@/context/SidebarContext';
 import { MainLayout } from '@/components/MainLayout';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'ShieldStat - Professional Security Analysis',
@@ -18,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
-      <body className={`${inter.className} h-full bg-[#fcfcfc] text-slate-900 antialiased`} suppressHydrationWarning>
+      <body className={`h-full bg-[#fcfcfc] text-slate-900 antialiased font-sans`} suppressHydrationWarning>
         <SidebarProvider>
           <MainLayout>
             {children}
