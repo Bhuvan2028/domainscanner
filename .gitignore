@@ -53,7 +53,7 @@ obj/
 *.docx
 *.pdf
 logo_isecurify.svg (if not needed)
-Bhuvn Agents/ (if not needed)
+bhuvn agents/
 
 # Others
 .idea/
