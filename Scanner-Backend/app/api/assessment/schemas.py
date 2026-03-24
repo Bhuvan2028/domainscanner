@@ -10,6 +10,7 @@ class Summary(BaseModel):
     grade: Optional[str] = None
     risk_level: Optional[str] = None
     risk_color: Optional[str] = None
+    category_scores: Optional[dict] = None
 
 
 class SelectedOption(BaseModel):

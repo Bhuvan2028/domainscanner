@@ -10,66 +10,86 @@ import {
   Shield,
   ArrowRight,
   ClipboardCheck,
-  Zap
+  Zap,
+  Search
 } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { getLatestAssessment } from '@/api/assessment';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { getLatestAssessment, getAssessmentHistory } from '@/api/assessment';
 import { AssessmentResult } from '@/components/AssessmentResult';
+import { ScoreCircularGauge } from '@/components/charts/ScoreCircularGauge';
+import { RiskRadarChart } from '@/components/charts/RiskRadarChart';
+import { ScoreTrendChart } from '@/components/charts/ScoreTrendChart';
+import { AssessmentSynthesis } from '@/components/charts/AssessmentSynthesis';
 
 function AssessmentOverviewContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const showSuccess = searchParams.get('assessment_complete') === 'true';
   const [assessment, setAssessment] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchLatest = async () => {
+    const fetchData = async () => {
       try {
-        const data = await getLatestAssessment();
-        if (data && data.summary) {
-          setAssessment(data);
+        const [latestData, historyData] = await Promise.all([
+          getLatestAssessment(),
+          getAssessmentHistory(10)
+        ]);
+        
+        if (latestData && latestData.summary) {
+          setAssessment(latestData);
         }
+        setHistory(historyData || []);
       } catch (err) {
-        console.error('Failed to fetch latest assessment:', err);
+        console.error('Failed to fetch assessment data:', err);
       } finally {
         setLoading(false);
       }
     };
-    fetchLatest();
+    fetchData();
   }, []);
+
+  const dismissSynthesis = () => {
+    // Remove the query param to hide the synthesis UI and show the real dashboard
+    router.replace('/dashboard', { scroll: false });
+  };
+
+  if (showSuccess) {
+    return (
+       <div className="min-h-full flex items-center justify-center p-8 bg-[#fcfcfc]">
+          <div className="w-full max-w-5xl mx-auto">
+             <AssessmentSynthesis onComplete={dismissSynthesis} />
+          </div>
+       </div>
+    );
+  }
 
   return (
     <div className="min-h-full flex flex-col gap-6 p-8 bg-[#fcfcfc]">
       
-      {/* Toast Notification */}
-      <AnimatePresence>
-        {showSuccess && (
-          <motion.div 
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-center gap-3 text-emerald-700 mb-2"
-          >
-            <CheckCircle2 size={20} />
-            <span className="text-sm font-bold">Assessment successfully completed! Your security posture has been updated.</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="flex justify-between items-end mb-2">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-slate-900 uppercase">Security Assessment</h1>
           <p className="text-sm text-slate-500 font-medium tracking-tight">Enterprise-wide security posture and maturity monitoring.</p>
         </div>
-        {assessment && (
-          <Link href="/dashboard/assessment/questionnaire">
-            <button className="px-5 py-2.5 bg-[#3b2a8d] text-white text-xs font-black uppercase tracking-widest hover:bg-[#2d1f70] transition-all flex items-center space-x-2 rounded-xl shadow-lg shadow-[#3b2a8d]/20 active:scale-95">
-              <Plus className="w-4 h-4" />
-              <span>Retake Assessment</span>
-            </button>
-          </Link>
-        )}
+        <div className="flex items-center gap-3">
+           <Link href="/dashboard/new-scan">
+              <button className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center space-x-2 rounded-xl active:scale-95 shadow-sm">
+                <Search className="w-4 h-4" />
+                <span>New Quick Scan</span>
+              </button>
+           </Link>
+          {assessment && (
+            <Link href="/dashboard/assessment/questionnaire">
+              <button className="px-5 py-2.5 bg-[#3b2a8d] text-white text-xs font-black uppercase tracking-widest hover:bg-[#2d1f70] transition-all flex items-center space-x-2 rounded-xl shadow-lg shadow-[#3b2a8d]/20 active:scale-95">
+                <Plus className="w-4 h-4" />
+                <span>Retake Assessment</span>
+              </button>
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="flex-1">
@@ -80,19 +100,74 @@ function AssessmentOverviewContent() {
           </div>
         ) : assessment ? (
           <div className="space-y-8">
-             <AssessmentResult summary={assessment.summary} />
              
-             {/* Secondary Analytics Placeholder (Real data will go here if added) */}
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 opacity-40 grayscale pointer-events-none">
-                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 h-64 flex flex-col items-center justify-center text-center gap-4">
-                   <Shield className="text-blue-500" size={32} />
-                   <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Compliance Trends</p>
-                </div>
-                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 h-64 flex flex-col items-center justify-center text-center gap-4">
-                   <Zap className="text-orange-500" size={32} />
-                   <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Risk Mitigation</p>
-                </div>
+             {/* High-Level KPIs */}
+             <AssessmentResult summary={assessment.summary} />
+
+             {/* Top Analytics Row */}
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[400px]">
+                
+                {/* 1. Gauge Chart */}
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="lg:col-span-1 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col relative overflow-hidden"
+                >
+                   {/* Background visual flair */}
+                   <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-slate-50 to-transparent pointer-events-none" />
+                   
+                   <div className="flex-1 flex items-center justify-center relative z-10 w-full">
+                      <ScoreCircularGauge 
+                        score={assessment.summary.percentage} 
+                        grade={assessment.summary.grade} 
+                        label="MATURITY SCORE"
+                      />
+                   </div>
+                </motion.div>
+
+                {/* 2. Radar Chart */}
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="lg:col-span-2 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col relative overflow-hidden"
+                >
+                   <div className="absolute top-0 right-0 p-8 opacity-5">
+                      <Shield size={100} />
+                   </div>
+                   
+                   <div className="text-center mb-2 relative z-10">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Risk Web</p>
+                      <h3 className="text-lg font-black text-slate-900">Category Analysis</h3>
+                   </div>
+                   
+                   <div className="flex-1 w-full relative z-10 min-h-0 flex items-center justify-center">
+                      {assessment.summary.category_scores ? (
+                        <RiskRadarChart data={Object.entries(assessment.summary.category_scores).map(([name, stats]: any) => ({
+                          category: name.replace(' & ', ' / '),
+                          value: stats.percentage
+                        }))} />
+                      ) : (
+                        <RiskRadarChart data={[]} /> // Uses defaults
+                      )}
+                   </div>
+                </motion.div>
              </div>
+
+             {/* Secondary Analytics Row - Theme matches top components */}
+             <motion.div 
+               initial={{ opacity: 0, y: 20 }}
+               animate={{ opacity: 1, y: 0 }}
+               transition={{ delay: 0.2 }}
+               className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col relative overflow-hidden w-full"
+             >
+                <div className="w-full min-h-[300px]">
+                   <ScoreTrendChart history={[...history].reverse().map((entry) => ({
+                     date: new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                     score: entry.summary.percentage,
+                   }))} />
+                </div>
+             </motion.div>
           </div>
         ) : (
           <motion.div 
