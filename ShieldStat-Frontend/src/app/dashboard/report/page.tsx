@@ -30,12 +30,12 @@ const ALL_FACTORS: { id: string; icon: React.ReactNode }[] = [
   { id: 'Application Security', icon: <Shield size={14} /> },
   { id: 'DNS Health',           icon: <Zap size={14} /> },
   { id: 'TLS Security',         icon: <Lock size={14} /> },
-  { id: 'Patching',             icon: <Activity size={14} /> },
+  // { id: 'Patching',             icon: <Activity size={14} /> },
   { id: 'IP Reputation',        icon: <Search size={14} /> },
-  { id: 'Cubit Score',          icon: <ShieldCheck size={14} /> },
-  { id: 'Hacker Chatter',       icon: <MessageSquare size={14} /> },
-  { id: 'Information Leak',     icon: <Database size={14} /> },
-  { id: 'Social Eng.',          icon: <Users size={14} /> },
+  // { id: 'Cubit Score',          icon: <ShieldCheck size={14} /> },
+  // { id: 'Hacker Chatter',       icon: <MessageSquare size={14} /> },
+  // { id: 'Information Leak',     icon: <Database size={14} /> },
+  // { id: 'Social Eng.',          icon: <Users size={14} /> },
 ];
 
 interface SecurityFactor {

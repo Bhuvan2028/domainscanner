@@ -13,13 +13,13 @@ export const RiskRadarChart: React.FC<RiskRadarChartProps> = ({ data }) => {
     { category: 'Network Security', value: 80 },
     { category: 'Application Security', value: 60 },
     { category: 'DNS Health', value: 90 },
-    { category: 'Patching Cadence', value: 70 },
+    // { category: 'Patching Cadence', value: 70 },
     { category: 'Endpoint Security', value: 50 },
     { category: 'IP Reputation', value: 85 },
-    { category: 'Cubit Score', value: 75 },
-    { category: 'Hacker Chatter', value: 40 },
-    { category: 'Information Leak', value: 65 },
-    { category: 'Social Engineering', value: 55 },
+    // { category: 'Cubit Score', value: 75 },
+    // { category: 'Hacker Chatter', value: 40 },
+    // { category: 'Information Leak', value: 65 },
+    // { category: 'Social Engineering', value: 55 },
   ];
 
   return (
