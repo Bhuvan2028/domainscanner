@@ -20,15 +20,15 @@ import { AssessmentResult } from '@/components/AssessmentResult';
 import { ScoreCircularGauge } from '@/components/charts/ScoreCircularGauge';
 import { RiskRadarChart } from '@/components/charts/RiskRadarChart';
 import { ScoreTrendChart } from '@/components/charts/ScoreTrendChart';
-import { AssessmentSynthesis } from '@/components/charts/AssessmentSynthesis';
+
+
 
 function AssessmentOverviewContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const showSuccess = searchParams.get('assessment_complete') === 'true';
   const [assessment, setAssessment] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -51,20 +51,8 @@ function AssessmentOverviewContent() {
     fetchData();
   }, []);
 
-  const dismissSynthesis = () => {
-    // Remove the query param to hide the synthesis UI and show the real dashboard
-    router.replace('/dashboard', { scroll: false });
-  };
 
-  if (showSuccess) {
-    return (
-       <div className="min-h-full flex items-center justify-center p-8 bg-[#fcfcfc]">
-          <div className="w-full max-w-5xl mx-auto">
-             <AssessmentSynthesis onComplete={dismissSynthesis} />
-          </div>
-       </div>
-    );
-  }
+
 
   return (
     <div className="min-h-full flex flex-col gap-6 p-8 bg-[#fcfcfc]">

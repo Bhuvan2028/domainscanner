@@ -16,11 +16,19 @@ export default function LandingPage() {
 
   const handleStartScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (domain.trim()) {
+    const cleanDomain = domain.trim();
+    if (cleanDomain) {
+      const domainPattern = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+      if (!domainPattern.test(cleanDomain)) {
+        setError('Please enter a valid domain name (e.g., example.com)');
+        setIsScanning(false);
+        return;
+      }
+
       setIsScanning(true);
       setError(null);
       try {
-        const res = await registerScanTask(domain.trim());
+        const res = await registerScanTask(cleanDomain);
         setScanId(res.scan_id);
       } catch (err: any) {
         setError(err.message || 'Failed to start scan');

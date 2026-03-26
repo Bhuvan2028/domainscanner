@@ -4,21 +4,22 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getScanResult } from '@/api/scanner';
 import { submitForAnalyzer } from '@/api/analyzer';
+import { useRouter } from 'next/navigation';
 import { 
   Shield, 
   Search, 
-  Filter, 
-  Loader, 
-  Check, 
   Globe, 
-  Zap, 
-  Mail, 
   Activity, 
-  Bug, 
   Target, 
   ShieldCheck,
+  Lock,
   Cpu,
-  CheckCircle2
+  Loader2,
+  Bug,
+  Server,
+  Network,
+  CheckCircle2,
+  TerminalSquare
 } from 'lucide-react';
 
 interface LoadingScanProps {
@@ -27,44 +28,95 @@ interface LoadingScanProps {
   onComplete: (scanId: string) => void;
 }
 
-type ScanStageType = 
-  | 'dns' 
-  | 'http' 
-  | 'ssl' 
-  | 'headers' 
-  | 'discovery' 
-  | 'email' 
-  | 'intel' 
-  | 'ports' 
-  | 'ai';
+const PARTICLES = [
+  { icon: <Lock size={12} />, label: 'SSL' },
+  { icon: <ShieldCheck size={12} />, label: 'HSTS' },
+  { icon: <Search size={12} />, label: 'DNS' },
+  { icon: <Globe size={12} />, label: 'GEO' },
+  { icon: <Cpu size={12} />, label: 'CORE' },
+  { icon: <Target size={12} />, label: 'PORT' },
+  { icon: <Activity size={12} />, label: 'RECO' },
+  { icon: <Bug size={12} />, label: 'VULN' },
+  { icon: <Server size={12} />, label: 'HOST' },
+  { icon: <Network size={12} />, label: 'NET' },
+];
+
+const SCAN_STAGES = [
+  "Establishing Secure Perimeter...",
+  "Resolving Name Servers...",
+  "Validating Cryptographic Chains...",
+  "Probing Attack Vectors...",
+  "Analyzing Topological Data...",
+  "Cross-referencing Threat Intel...",
+  "Deep Synthesizing Results...",
+];
 
 export const LoadingScan: React.FC<LoadingScanProps> = ({ domain, scanId, onComplete }) => {
-  const [currentStage, setCurrentStage] = useState<ScanStageType>('dns');
+  const router = useRouter();
   const [progress, setProgress] = useState(0);
   const [isDone, setIsDone] = useState(false);
   const [realScanDone, setRealScanDone] = useState(false);
   const [analyzerError, setAnalyzerError] = useState<string | null>(null);
+  const [activeParticles, setActiveParticles] = useState<any[]>([]);
+  const [currentStage, setCurrentStage] = useState(0);
 
-  const stages = [
-    { id: 'dns', label: 'DNS Reconnaissance', icon: <Globe size={18} /> },
-    { id: 'http', label: 'HTTP & Technology', icon: <Cpu size={18} /> },
-    { id: 'ssl', label: 'SSL/TLS Analysis', icon: <Shield size={18} /> },
-    { id: 'headers', label: 'Security Headers', icon: <ShieldCheck size={18} /> },
-    { id: 'discovery', label: 'Subdomain Discovery', icon: <Search size={18} /> },
-    { id: 'email', label: 'Email Security', icon: <Mail size={18} /> },
-    { id: 'intel', label: 'Reputation & Intel', icon: <Activity size={18} /> },
-    { id: 'ports', label: 'Port Scanning', icon: <Target size={18} /> },
-    { id: 'ai', label: 'AI Risk Scoring', icon: <Zap size={18} /> },
-  ];
+  // Handle "Back" navigation
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      window.history.pushState(null, '', window.location.href);
+      router.replace('/dashboard/scan-history');
+    };
+
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', handlePopState);
+    
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [router]);
+
+  // Stage text progression
+  useEffect(() => {
+    const stageIndex = Math.min(
+      Math.floor((progress / 100) * SCAN_STAGES.length),
+      SCAN_STAGES.length - 1
+    );
+    if (stageIndex !== currentStage) {
+      setCurrentStage(stageIndex);
+    }
+  }, [progress, currentStage]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setProgress(prev => {
+        if (prev < 90) return prev + Math.random() * 2;
+        if (realScanDone && prev < 99) return prev + 1;
+        return prev;
+      });
+    }, 800);
+    return () => clearInterval(timer);
+  }, [realScanDone]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isDone) return;
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 100 + Math.random() * 80;
+      const newParticle = {
+        id: Math.random(),
+        ...PARTICLES[Math.floor(Math.random() * PARTICLES.length)],
+        x: Math.cos(angle) * distance,
+        y: Math.sin(angle) * distance,
+        rotation: Math.random() * 360
+      };
+      setActiveParticles(prev => [...prev.slice(-12), newParticle]);
+    }, 800);
+    return () => clearInterval(interval);
+  }, [isDone]);
 
   useEffect(() => {
     let isMounted = true;
     const pollScan = async () => {
       try {
         const result = await getScanResult(scanId);
-        // The scan is done when the webhook has overwritten the initial
-        // {"status":"pending","progress":0} payload with the real scan data.
-        // After the Go worker finishes, results will contain a "data" key.
         if (result && result.status !== 'pending' && result.data) {
           if (isMounted) setRealScanDone(true);
         } else {
@@ -79,28 +131,12 @@ export const LoadingScan: React.FC<LoadingScanProps> = ({ domain, scanId, onComp
   }, [scanId]);
 
   useEffect(() => {
-    let currentIdx = 0;
-    const scrollInterval = setInterval(() => {
-      if (currentIdx < stages.length - 1) {
-        currentIdx++;
-        setCurrentStage(stages[currentIdx].id as ScanStageType);
-        setProgress(Math.floor((currentIdx / stages.length) * 100));
-      } else {
-        clearInterval(scrollInterval);
-        setProgress(99); // Wait for real scan if taking longer
-      }
-    }, 1200);
-
-    return () => clearInterval(scrollInterval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (progress === 99 && realScanDone && !isDone && !analyzerError) {
+    if (progress >= 95 && realScanDone && !isDone && !analyzerError) {
       submitForAnalyzer(scanId)
         .then(() => {
           setProgress(100);
           setIsDone(true);
-          setTimeout(() => onComplete(scanId), 1500);
+          setTimeout(() => onComplete(scanId), 2500);
         })
         .catch(err => {
           setAnalyzerError(err.message || 'Analysis failed');
@@ -108,107 +144,205 @@ export const LoadingScan: React.FC<LoadingScanProps> = ({ domain, scanId, onComp
     }
   }, [progress, realScanDone, isDone, scanId, onComplete, analyzerError]);
 
-  const activeIndex = stages.findIndex(s => s.id === currentStage);
-
   return (
-    <div className="w-full space-y-12 py-8">
-      {/* 3-Column Grid of Stages */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {stages.map((s, index) => {
-          const isActive = index === activeIndex && !isDone;
-          const isCompleted = index < activeIndex || isDone;
-
-          return (
-            <motion.div
-              key={s.id}
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: index * 0.05 }}
-              className={`relative p-4 rounded-2xl border transition-all duration-500 overflow-hidden ${
-                isActive ? 'bg-blue-50 border-blue-200 shadow-sm' :
-                isCompleted ? 'bg-white border-slate-100/50' :
-                'bg-slate-50 border-transparent opacity-40'
-              }`}
-            >
-              <div className="flex items-center space-x-4 relative z-10">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 ${
-                  isActive ? 'bg-white text-blue-600 shadow-sm' :
-                  isCompleted ? 'bg-green-50 text-green-600' :
-                  'bg-white text-slate-400'
-                }`}>
-                  {isCompleted ? <Check size={18} /> : s.icon}
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <h4 className={`text-[11px] font-black uppercase tracking-tight truncate ${
-                    isActive ? 'text-blue-900' : 
-                    isCompleted ? 'text-slate-600' : 
-                    'text-slate-400'
-                  }`}>
-                    {s.label}
-                  </h4>
-                  <div className="flex items-center space-x-2">
-                    {isActive && <Loader className="w-2.5 h-2.5 text-blue-500 animate-spin" />}
-                    <span className={`text-[9px] font-bold uppercase tracking-tight ${
-                      isActive ? 'text-blue-600/60' :
-                      isCompleted ? 'text-green-600/60' :
-                      'text-slate-400/60'
-                    }`}>
-                      {isActive ? 'Active' : isCompleted ? 'Verified' : 'Pending'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Individual Progress Bar */}
-              {isActive && (
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-100">
-                  <motion.div 
-                    className="h-full bg-blue-500"
-                    initial={{ width: '0%' }}
-                    animate={{ width: '100%' }}
-                    transition={{ duration: 1.5, ease: "linear" }}
-                  />
-                </div>
-              )}
-            </motion.div>
-          );
-        })}
+    <div className="relative w-full flex-1 flex flex-col items-center justify-center h-full min-h-[calc(100vh-8rem)] bg-[#fcfcfc] overflow-hidden rounded-3xl py-2 selection:bg-[#3b2a8d]/10">
+      
+      {/* 🌌 Atmospheric Mesh Gradients */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <motion.div 
+          animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0], opacity: [0.15, 0.2, 0.15] }}
+          transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-gradient-to-br from-[#3b2a8d]/10 to-transparent rounded-full blur-[120px]" 
+        />
+        <motion.div 
+          animate={{ scale: [1, 1.2, 1], rotate: [0, -5, 5, 0], opacity: [0.1, 0.15, 0.1] }}
+          transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-gradient-to-tl from-[#5f42d6]/10 to-transparent rounded-full blur-[140px]" 
+        />
       </div>
 
-      {/* Global Progress Bar */}
-      <div className="max-w-2xl mx-auto space-y-6 pt-4">
-        <div className="flex justify-between items-end">
-          <div className="space-y-1">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Aggregate Synthesis</span>
-            <p className="text-slate-900 text-xs font-bold uppercase">
-              {analyzerError ? 'Error: ' + analyzerError : isDone ? 'Sequence Completed' : progress === 99 ? 'Awaiting Backend Processing' : `Sector ${activeIndex + 1}/${stages.length} Active`}
-            </p>
-          </div>
-          <span className="text-2xl font-black text-blue-600 tracking-tighter">{progress}%</span>
-        </div>
+      {/* 📐 Subtle Architecture Grid */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(59,42,141,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(59,42,141,0.03)_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_at_center,black_10%,transparent_70%)] pointer-events-none" />
+
+      <div className="relative w-full max-w-4xl flex flex-col items-center z-10">
         
-        <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-0.5">
+        {/* Header Badges */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-center space-y-1 mb-2"
+        >
+          <div className="inline-flex items-center space-x-2 bg-white/60 backdrop-blur-md border border-[#3b2a8d]/10 px-3 py-1 rounded-full shadow-[0_4px_15px_rgba(59,42,141,0.03)] scale-90">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#3b2a8d] animate-pulse" />
+            <span className="text-[9px] font-black text-[#3b2a8d] uppercase tracking-[0.3em]">Quantum Security Core</span>
+          </div>
+          <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase text-center">
+            <span className="text-transparent bg-clip-text bg-gradient-to-tr from-[#3b2a8d] to-[#7f64ea]">Scanning</span> {domain}
+          </h2>
+        </motion.div>
+
+        {/* ⚛️ Central Animation: Quantum Security Core */}
+        <div className="relative w-56 h-56 md:w-72 md:h-72 flex items-center justify-center my-2">
+          
+          {/* Orbital Rings */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {/* Outer Thick Dashed Ring */}
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+              className="absolute inset-4 rounded-full border-[1px] border-dashed border-[#3b2a8d]/20"
+            />
+            {/* Middle Thin Ring */}
+            <motion.div 
+              animate={{ rotate: -360 }}
+              transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+              className="absolute inset-[25%] rounded-full border border-[#3b2a8d]/10 shadow-[inset_0_0_20px_rgba(59,42,141,0.02)]"
+            />
+            {/* Inner Glowing Ring */}
+            <motion.div 
+              animate={{ scale: [1, 1.05, 1], opacity: [0.5, 0.8, 0.5] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute inset-[35%] rounded-full border-[2px] border-[#3b2a8d]/15 bg-white/30 backdrop-blur-sm"
+            />
+          </div>
+
+          {/* Sweeping Radar Conic Gradient */}
           <motion.div 
-            initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
-            className="h-full bg-blue-600 rounded-full shadow-sm"
+            animate={{ rotate: 360 }}
+            transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+            className="absolute inset-0 rounded-full bg-[conic-gradient(from_0deg_at_50%_50%,rgba(59,42,141,0)_0%,rgba(59,42,141,0.02)_25%,rgba(95,66,214,0.1)_50%,rgba(59,42,141,0)_50%)]"
+            style={{ filter: "blur(4px)" }}
           />
+
+          {/* Core Shield Floating Hub */}
+          <motion.div
+            animate={{ y: [-4, 4, -4] }}
+            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+            className="relative z-20 w-32 h-32 bg-white rounded-3xl border border-white/50 flex flex-col items-center justify-center shadow-[0_20px_50px_rgba(59,42,141,0.15)] overflow-hidden"
+          >
+            {/* Inner glass reflection */}
+            <div className="absolute inset-0 bg-gradient-to-b from-white/80 to-transparent" />
+            <Shield className="w-14 h-14 text-[#3b2a8d] drop-shadow-md z-10" />
+            {isDone && (
+              <motion.div
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="absolute inset-0 bg-emerald-500/10 flex items-center justify-center backdrop-blur-md z-20"
+              >
+                <CheckCircle2 className="w-16 h-16 text-emerald-500" />
+              </motion.div>
+            )}
+            
+            {/* Subtle inner pulse */}
+            {!isDone && (
+              <motion.div 
+                animate={{ scale: [1, 2], opacity: [0.3, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+                className="absolute w-12 h-12 bg-[#3b2a8d]/20 rounded-full"
+              />
+            )}
+          </motion.div>
+
+          {/* Dynamic Floating Particles */}
+          <AnimatePresence>
+            {activeParticles.map((p) => (
+              <motion.div
+                key={p.id}
+                initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
+                animate={{ 
+                  opacity: [0, 1, 0], 
+                  scale: [0.5, 1, 0.8],
+                  x: p.x,
+                  y: p.y,
+                  rotate: p.rotation
+                }}
+                exit={{ opacity: 0, scale: 0 }}
+                transition={{ duration: 3, ease: "easeOut" }}
+                className="absolute z-10 flex flex-col items-center gap-1.5"
+                style={{ originX: 0.5, originY: 0.5 }}
+              >
+                <div className="p-2.5 bg-white/80 backdrop-blur-md border border-[#3b2a8d]/15 rounded-xl text-[#3b2a8d] shadow-[0_8px_16px_rgba(59,42,141,0.06)]">
+                  {p.icon}
+                </div>
+                <div className="px-2 py-0.5 bg-white/90 border border-[#3b2a8d]/10 rounded-full">
+                   <span className="text-[8px] font-black text-[#3b2a8d]/70 uppercase tracking-widest">{p.label}</span>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
         </div>
 
-        {isDone && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-center"
-          >
-            <div className="inline-flex items-center space-x-2 text-green-600 font-bold text-[10px] bg-green-50 px-4 py-2 rounded-full border border-green-100 uppercase tracking-widest">
-              <CheckCircle2 size={12} />
-              <span>Assessment Complete</span>
+        {/* 🎛️ HUD Telemetry & Progress */}
+        <div className="w-full max-w-xl mt-2 space-y-3">
+          
+          {/* Active Log Panel */}
+          <div className="flex flex-col items-center justify-center space-y-2 h-12">
+             <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentStage}
+                  initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+                  transition={{ duration: 0.3 }}
+                  className="flex items-center space-x-2"
+                >
+                  <TerminalSquare className="w-3.5 h-3.5 text-[#3b2a8d]/60" />
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-[0.15em] font-mono">
+                    {isDone ? 'System Fully Secured' : SCAN_STAGES[currentStage]}
+                  </span>
+                </motion.div>
+             </AnimatePresence>
+          </div>
+
+          {/* Premium Progress Bar */}
+          <div className="bg-white/60 p-4 rounded-2xl border border-white shadow-[0_8px_30px_rgba(59,42,141,0.04)] backdrop-blur-xl relative overflow-hidden group scale-95 origin-bottom">
+            
+            <div className="flex justify-between items-end mb-2">
+              <div className="flex items-center gap-2">
+                 {isDone ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                 ) : (
+                    <Loader2 className="w-4 h-4 text-[#3b2a8d] animate-spin" />
+                 )}
+                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                   {isDone ? 'Deployment Complete' : 'Network Integrity Check'}
+                 </span>
+              </div>
+              <div className="flex items-baseline gap-1">
+                 <span className="text-3xl font-black text-slate-800 tracking-tighter tabular-nums">{Math.floor(progress)}</span>
+                 <span className="text-sm font-black text-[#3b2a8d]/50">%</span>
+              </div>
             </div>
-          </motion.div>
-        )}
+            
+            <div className="h-2 w-full bg-slate-100/80 rounded-full relative overflow-hidden ring-1 ring-inset ring-slate-200/50">
+              <motion.div 
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ ease: "easeOut", duration: 0.5 }}
+                className={`h-full rounded-full relative shadow-[0_0_15px_rgba(59,42,141,0.3)] ${isDone ? 'bg-emerald-500' : 'bg-gradient-to-r from-[#3b2a8d] to-[#7f64ea]'}`}
+              >
+                {/* Glowing edge highlight */}
+                {!isDone && <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white/60 to-transparent blur-sm mix-blend-overlay animate-pulse" />}
+              </motion.div>
+            </div>
+          </div>
+          
+        </div>
+
       </div>
+
+      {analyzerError && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute top-8 px-6 py-3 bg-red-50/90 backdrop-blur-md border border-red-200/50 rounded-2xl text-red-600 text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 z-50"
+        >
+           <Bug className="w-4 h-4" />
+           Critical Fault: {analyzerError}
+        </motion.div>
+      )}
+
     </div>
   );
 };

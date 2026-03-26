@@ -92,7 +92,7 @@ export default function QuestionnairePage() {
         selectedOption: key as "A" | "B" | "C" | "D"
       }));
       await submitAssessment(formattedAnswers);
-      router.push('/dashboard?assessment_complete=true');
+      router.push('/dashboard');
     } catch (err) {
       setError('Failed to submit assessment. Please try again.');
       setIsSubmitting(false);
