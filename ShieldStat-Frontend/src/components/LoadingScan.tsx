@@ -41,16 +41,6 @@ const PARTICLES = [
   { icon: <Network size={12} />, label: 'NET' },
 ];
 
-const SCAN_STAGES = [
-  "Establishing Secure Perimeter...",
-  "Resolving Name Servers...",
-  "Validating Cryptographic Chains...",
-  "Probing Attack Vectors...",
-  "Analyzing Topological Data...",
-  "Cross-referencing Threat Intel...",
-  "Deep Synthesizing Results...",
-];
-
 export const LoadingScan: React.FC<LoadingScanProps> = ({ domain, scanId, onComplete }) => {
   const router = useRouter();
   const [progress, setProgress] = useState(0);
@@ -58,7 +48,6 @@ export const LoadingScan: React.FC<LoadingScanProps> = ({ domain, scanId, onComp
   const [realScanDone, setRealScanDone] = useState(false);
   const [analyzerError, setAnalyzerError] = useState<string | null>(null);
   const [activeParticles, setActiveParticles] = useState<any[]>([]);
-  const [currentStage, setCurrentStage] = useState(0);
 
   // Handle "Back" navigation
   useEffect(() => {
@@ -73,16 +62,6 @@ export const LoadingScan: React.FC<LoadingScanProps> = ({ domain, scanId, onComp
     return () => window.removeEventListener('popstate', handlePopState);
   }, [router]);
 
-  // Stage text progression
-  useEffect(() => {
-    const stageIndex = Math.min(
-      Math.floor((progress / 100) * SCAN_STAGES.length),
-      SCAN_STAGES.length - 1
-    );
-    if (stageIndex !== currentStage) {
-      setCurrentStage(stageIndex);
-    }
-  }, [progress, currentStage]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -278,21 +257,6 @@ export const LoadingScan: React.FC<LoadingScanProps> = ({ domain, scanId, onComp
           
           {/* Active Log Panel */}
           <div className="flex flex-col items-center justify-center space-y-2 h-12">
-             <AnimatePresence mode="wait">
-                <motion.div
-                  key={currentStage}
-                  initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
-                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
-                  transition={{ duration: 0.3 }}
-                  className="flex items-center space-x-2"
-                >
-                  <TerminalSquare className="w-3.5 h-3.5 text-[#3b2a8d]/60" />
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-[0.15em] font-mono">
-                    {isDone ? 'System Fully Secured' : SCAN_STAGES[currentStage]}
-                  </span>
-                </motion.div>
-             </AnimatePresence>
           </div>
 
           {/* Premium Progress Bar */}
@@ -300,11 +264,6 @@ export const LoadingScan: React.FC<LoadingScanProps> = ({ domain, scanId, onComp
             
             <div className="flex justify-between items-end mb-2">
               <div className="flex items-center gap-2">
-                 {isDone ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                 ) : (
-                    <Loader2 className="w-4 h-4 text-[#3b2a8d] animate-spin" />
-                 )}
                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                    {isDone ? 'Deployment Complete' : 'Network Integrity Check'}
                  </span>
