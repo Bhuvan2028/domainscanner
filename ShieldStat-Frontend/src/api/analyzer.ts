@@ -4,8 +4,18 @@ export interface VulnerabilityEntry {
   subdomain: string;
   ip: string | null;
   severity: string;
+  breach_risk?: string;
+  impact?: number;
+  description?: string;
+  remediation?: string;
+  cvss?: string;
   port: number | null;
+  abuse_score?: number;
+  country?: string;
+  usage_type?: string;
+  isp?: string;
 }
+
 
 export interface GeneratedScoreResponse {
   scan_id: string;

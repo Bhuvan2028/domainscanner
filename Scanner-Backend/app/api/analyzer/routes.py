@@ -25,7 +25,7 @@ def generate_score(scan_id: str, db: Session = Depends(get_db)):
                     "scan_id": scans.scan_id,
                     "domain_score": scans.domain_score,
                     "category_scores": scans.category_scores or {},
-                    "host": {},
+                    "host": {"domain": scans.domain, "mail_security": scans.mail_security},
                     "severity": scans.severity,
                     "categorized_vulnerabilities": scans.categorized_vulnerabilities,
                     "ips": scans.ips or []

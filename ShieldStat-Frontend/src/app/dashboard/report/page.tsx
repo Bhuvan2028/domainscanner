@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState, Suspense } from 'react';
+import React, { useEffect, useRef, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import gsap from 'gsap';
@@ -19,10 +19,15 @@ import {
   MessageSquare,
   Database,
   Users,
-  Loader2
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
 import { submitForAnalyzer, type GeneratedScoreResponse, type VulnerabilityEntry } from '@/api/analyzer';
+import { submitFix, VULN_NAME_TO_FIX_TYPE, CATEGORY_TO_FIX_CATEGORY } from '@/api/fix';
 
 // ─── All 10 security factor definitions ──────────────────────────────────────
 const ALL_FACTORS: { id: string; icon: React.ReactNode }[] = [
@@ -56,7 +61,7 @@ function SecurityReportContent() {
   const [activeFactor, setActiveFactor] = useState('');
   const [activeIssueCategory, setActiveIssueCategory] = useState('All');
   const [selectedIssue, setSelectedIssue] = useState<any>(null);
-  const [isFixing, setIsFixing] = useState<number | null>(null);
+  const [isFixing, setIsFixing] = useState<string | null>(null);
   const [fixedIssues, setFixedIssues] = useState<number[]>([]);
   const mainRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +71,17 @@ function SecurityReportContent() {
   const [reportError, setReportError] = useState<string | null>(null);
   const [totalSubdomains, setTotalSubdomains] = useState(0);
   const [scanDate, setScanDate] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning'; visible: boolean } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' = 'success') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, type, visible: true });
+    toastTimer.current = setTimeout(() => {
+      setToast(prev => prev ? { ...prev, visible: false } : null);
+      setTimeout(() => setToast(null), 400);
+    }, 5000);
+  }, []);
 
   useEffect(() => {
     if (!scanId) {
@@ -73,66 +89,62 @@ function SecurityReportContent() {
       setReportError('No scan_id provided. Please start a scan first.');
       return;
     }
+
     setIsLoading(true);
-    submitForAnalyzer(scanId).then((res) => {
+    submitForAnalyzer(scanId)
+      .then((res) => {
         setGlobalScore(res.domain_score);
         
         const newIssuesData: Record<string, any[]> = {};
         const activeFactorCounts: Record<string, number> = {};
-        
-        // Count unique subdomains across all vulnerabilities
         const allSubdomains = new Set<string>();
         
-        // Add getPort helper for non-network issues
-        const getPort = (vulnName: string): string => {
-            if (vulnName.includes('443')) return '443';
-            if (vulnName.includes('HTTP without')) return '80';
-            if (vulnName.includes('port')) return 'Various';
-            return '—';
-        };
+        Object.entries(res.categorized_vulnerabilities || {}).forEach(([factorName, vulnerabilities]) => {
+            const factorIssues: any[] = [];
+            let factorIssueCount = 0;
+            
+            Object.entries(vulnerabilities as Record<string, VulnerabilityEntry[]>).forEach(([vulnName, targets]) => {
+                const findingTargets = Array.isArray(targets) ? targets : [];
+                if (findingTargets.length === 0) return;
+                
+                findingTargets.forEach((t) => {
+                    if (t.subdomain) allSubdomains.add(t.subdomain);
+                });
+                
+                const firstFinding = findingTargets[0];
+                factorIssueCount++;
+                
+                factorIssues.push({
+                    id: Math.floor(Math.random() * 1000000), 
+                    title: vulnName,
+                    severity: firstFinding.severity,
+                    category: factorName,
+                    desc: firstFinding.description || `Detected issue: ${vulnName}. Affects ${findingTargets.length} host(s).`,
+                    remediation: firstFinding.remediation || 'Please review and apply security best practices.',
+                    breachRisk: firstFinding.breach_risk || firstFinding.severity,
+                    impact: firstFinding.impact || 5,
+                    findings: findingTargets.map((t) => ({
+                        status: 'Open',
+                        target: t.subdomain || '—',
+                        ip: t.ip || '—',
+                        port: t.port != null ? t.port : (vulnName.includes('443') ? 443 : (vulnName.includes('80') ? 80 : null)),
+                        severity: t.severity,
+                        cvss: t.cvss || (t.abuse_score ? (t.abuse_score / 10).toFixed(1) : '—'),
+                        abuse_score: t.abuse_score,
+                        country: t.country,
+                        usage_type: t.usage_type,
+                        isp: t.isp,
+                        observation: new Date().toLocaleDateString()
+                    })).sort((a: any, b: any) => (b.abuse_score || 0) - (a.abuse_score || 0))
+                });
+            });
 
-        Object.entries(res.categorized_vulnerabilities).forEach(([factorName, vulnerabilities]) => {
-           const factorIssues: any[] = [];
-           let factorIssueCount = 0;
-           
-           Object.entries(vulnerabilities as Record<string, VulnerabilityEntry[]>).forEach(([vulnName, targets]) => {
-               const findingTargets = Array.isArray(targets) ? targets : [];
-               if (findingTargets.length === 0) return;
-               
-               findingTargets.forEach((t: VulnerabilityEntry) => allSubdomains.add(t.subdomain || (t as any)));
-               factorIssueCount++;
-               factorIssues.push({
-                   id: Math.floor(Math.random() * 1000000), 
-                   title: vulnName,
-                   severity: getSeverity(vulnName),
-                   category: factorName,
-                   desc: getDescription(vulnName, findingTargets.length),
-                   remediation: getRemediation(vulnName),
-                   breachRisk: getSeverity(vulnName),
-                   impact: getImpact(vulnName),
-                   findings: findingTargets.map((t: any) => ({
-                       status: 'Open',
-                       target: t.subdomain || (t as any),
-                       ip: t.ip || '—',
-                       port: t.port != null ? t.port : getPort(vulnName),
-                       severity: t.severity || getSeverity(vulnName),
-                       cvss: t.abuse_score ? (t.abuse_score / 10).toFixed(1) : getCVSS(vulnName),
-                       abuse_score: t.abuse_score,
-                       country: t.country,
-                       usage_type: t.usage_type,
-                       isp: t.isp,
-                       observation: new Date().toLocaleDateString()
-                   })).sort((a: any, b: any) => (b.abuse_score || 0) - (a.abuse_score || 0))
-               });
-           });
-           
-           if (factorIssues.length > 0) {
-               newIssuesData[factorName] = factorIssues;
-               activeFactorCounts[factorName] = factorIssueCount;
-           }
+            if (factorIssues.length > 0) {
+                newIssuesData[factorName] = factorIssues;
+                activeFactorCounts[factorName] = factorIssueCount;
+            }
         });
-        
-        // Build all 10 factors using API category_scores
+
         const apiScores = res.category_scores || {};
         const newFactors: SecurityFactor[] = ALL_FACTORS.map(f => ({
           id: f.id,
@@ -150,23 +162,170 @@ function SecurityReportContent() {
         if (firstActive) setActiveFactor(firstActive);
         
         setIsLoading(false);
-    }).catch((err: Error) => {
+      })
+      .catch((err: Error) => {
         setReportError(err.message);
         setIsLoading(false);
-    });
+      });
   }, [scanId]);
+
 
   // Counts
   const totalVulns = dynamicSecurityFactors.reduce((sum, f) => sum + f.count, 0);
 
-  const handleFix = (issueId: number) => {
-    setIsFixing(issueId);
-    setTimeout(() => {
-      setFixedIssues(prev => [...prev, issueId]);
+  const [fixStatus, setFixStatus] = useState<Record<number, 'pending' | 'success' | 'failed'>>({});
+
+  const handleFix = async (issueId: number, findingIndex?: number) => {
+    // Find the issue object
+    let targetIssue: any = null;
+    for (const factorData of Object.values(dynamicIssuesData)) {
+      const issue = factorData.find(i => i.id === issueId);
+      if (issue) {
+        targetIssue = issue;
+        break;
+      }
+    }
+
+    if (!targetIssue) return;
+
+    const fixType = VULN_NAME_TO_FIX_TYPE[targetIssue.title];
+    const category = CATEGORY_TO_FIX_CATEGORY[targetIssue.category];
+
+    if (!fixType || !category) {
+      console.warn("No fix mapping for", targetIssue.title, targetIssue.category);
+      showToast(`Fix for "${targetIssue.title}" is not yet implemented.`, 'warning');
+      return;
+    }
+
+    const fixKey = `${issueId}-${findingIndex ?? 0}`;
+    setIsFixing(fixKey);
+    setFixStatus(prev => ({ ...prev, [issueId]: 'pending' }));
+
+    try {
+      const index = findingIndex ?? 0;
+      const finding = targetIssue.findings[index];
+
+      await submitFix({
+        scan_id: scanId!,
+        domain: domain,
+        fix_type: fixType,
+        data: {
+          category: category,
+          subdomain: finding.target === '—' ? domain : finding.target,
+          port: finding.port !== '—' && finding.port != null ? Number(finding.port) : null
+        }
+      });
+
+      // Wait for the scanner to verify the fix (5-10 seconds for probe to complete)
+      await new Promise(resolve => setTimeout(resolve, 8000));
+
+      // Re-fetch the score to see if the issue was removed
+      const updatedRes = await submitForAnalyzer(scanId!);
+
+      // Check if the specific issue still exists in the updated response
+      let issueStillExists = false;
+      if (updatedRes.categorized_vulnerabilities) {
+        for (const [, vulnerabilities] of Object.entries(updatedRes.categorized_vulnerabilities)) {
+          const vulns = vulnerabilities as Record<string, any[]>;
+          if (vulns[targetIssue.title]) {
+            // Check if the specific subdomain finding still exists
+            const subdomainToCheck = finding.target === '—' ? domain : finding.target;
+            const stillHasFinding = vulns[targetIssue.title].some(
+              (f: any) => f.subdomain === subdomainToCheck
+            );
+            if (stillHasFinding) {
+              issueStillExists = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!issueStillExists) {
+        // Issue is resolved! Update the UI
+        setFixStatus(prev => ({ ...prev, [issueId]: 'success' }));
+        setFixedIssues(prev => [...prev, issueId]);
+        setGlobalScore(updatedRes.domain_score);
+        
+        // Refresh the full data
+        const newIssuesData: Record<string, any[]> = {};
+        const activeFactorCounts: Record<string, number> = {};
+        const allSubdomains = new Set<string>();
+        
+        Object.entries(updatedRes.categorized_vulnerabilities || {}).forEach(([factorName, vulnerabilities]) => {
+          const factorIssues: any[] = [];
+          let factorIssueCount = 0;
+          
+          Object.entries(vulnerabilities as Record<string, VulnerabilityEntry[]>).forEach(([vulnName, targets]) => {
+            const findingTargets = Array.isArray(targets) ? targets : [];
+            if (findingTargets.length === 0) return;
+            
+            findingTargets.forEach((t) => {
+              if (t.subdomain) allSubdomains.add(t.subdomain);
+            });
+            
+            const firstFinding = findingTargets[0];
+            factorIssueCount++;
+            
+            factorIssues.push({
+              id: Math.floor(Math.random() * 1000000), 
+              title: vulnName,
+              severity: firstFinding.severity,
+              category: factorName,
+              desc: firstFinding.description || `Detected issue: ${vulnName}. Affects ${findingTargets.length} host(s).`,
+              remediation: firstFinding.remediation || 'Please review and apply security best practices.',
+              breachRisk: firstFinding.breach_risk || firstFinding.severity,
+              impact: firstFinding.impact || 5,
+              findings: findingTargets.map((t) => ({
+                status: 'Open',
+                target: t.subdomain || '—',
+                ip: t.ip || '—',
+                port: t.port != null ? t.port : null,
+                severity: t.severity,
+                cvss: t.cvss || '—',
+                abuse_score: t.abuse_score,
+                country: t.country,
+                usage_type: t.usage_type,
+                isp: t.isp,
+                observation: new Date().toLocaleDateString()
+              }))
+            });
+          });
+
+          if (factorIssues.length > 0) {
+            newIssuesData[factorName] = factorIssues;
+            activeFactorCounts[factorName] = factorIssueCount;
+          }
+        });
+
+        const apiScores = updatedRes.category_scores || {};
+        const newFactors: SecurityFactor[] = ALL_FACTORS.map(f => ({
+          id: f.id,
+          count: activeFactorCounts[f.id] || 0,
+          score: apiScores[f.id] ?? 100,
+          icon: f.icon,
+        }));
+        
+        setTotalSubdomains(allSubdomains.size);
+        setDynamicIssuesData(newIssuesData);
+        setDynamicSecurityFactors(newFactors);
+
+        showToast("Issue verified as resolved! Your security score has been updated.", 'success');
+      } else {
+        // Issue is NOT resolved
+        setFixStatus(prev => ({ ...prev, [issueId]: 'failed' }));
+        showToast("❌ Issue NOT resolved yet. Please fix the issue on your server/DNS and try again.", 'error');
+      }
+
+    } catch (err) {
+      console.error("Fix failed:", err);
+      setFixStatus(prev => ({ ...prev, [issueId]: 'failed' }));
+      showToast("Failed to submit fix request. Please check your connection.", 'error');
+    } finally {
       setIsFixing(null);
-      setGlobalScore(prev => Math.min(100, prev + 2));
-    }, 2000);
+    }
   };
+
 
   useEffect(() => {
     if (isLoading || globalScore === 0) return;
@@ -446,9 +605,6 @@ function SecurityReportContent() {
                               <div className="flex items-center space-x-2 pt-1">
                                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Affected:</span>
                                 <span className="text-[10px] font-bold text-blue-600">{issue.findings.length} {issue.findings.length === 1 ? 'host' : 'hosts'}</span>
-                                <span className="text-[9px] text-slate-300">·</span>
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Score impact:</span>
-                                <span className="text-[10px] font-bold text-red-500">−{issue.impact} pts</span>
                               </div>
                               {/* IP & Port badges */}
                               <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
@@ -465,21 +621,6 @@ function SecurityReportContent() {
                               </div>
                             </div>
                             <div className="flex items-center space-x-3 ml-4">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleFix(issue.id); }}
-                                disabled={isFixing === issue.id}
-                                className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all inline-flex items-center space-x-2 ${
-                                  isFixing === issue.id
-                                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                    : 'bg-blue-600 text-white hover:bg-blue-700 border border-blue-600 shadow-sm'
-                                }`}
-                              >
-                                {isFixing === issue.id ? (
-                                  <><div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /><span>Resolving...</span></>
-                                ) : (
-                                  <><ShieldCheck size={12} /><span>Fix</span></>
-                                )}
-                              </button>
                               <button className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
                                 <ChevronRight size={14} />
                               </button>
@@ -521,18 +662,17 @@ function SecurityReportContent() {
                   </div>
 
                   {/* Summary Cards */}
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     {[
                       { label: 'Threat Level',  value: selectedIssue.severity,   sub: 'Expert Calibration' },
                       { label: 'Breach Risk',   value: selectedIssue.breachRisk, sub: 'Vector Likelihood' },
-                      { label: 'Score Delta',   value: `−${selectedIssue.impact}`, sub: 'Per-Subdomain Impact' },
                     ].map((card, i) => (
                       <div key={i} className="bg-slate-900 p-6 rounded-xl border border-slate-800 space-y-2 overflow-hidden relative">
                         <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-12 -mt-12" />
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">{card.label}</p>
                         <p className={`text-xl font-black ${
-                          card.value === 'Critical' || card.value.startsWith('−2') ? 'text-red-500' :
-                          card.value === 'High'     || card.value.startsWith('−1') ? 'text-orange-500' :
+                          card.value === 'Critical' ? 'text-red-500' :
+                          card.value === 'High'     ? 'text-orange-500' :
                           card.value === 'Medium'   ? 'text-yellow-400' : 'text-white'
                         }`}>{card.value}</p>
                         <p className="text-[8px] text-slate-600 font-extrabold uppercase tracking-tighter">{card.sub}</p>
@@ -607,16 +747,16 @@ function SecurityReportContent() {
                               <td className="px-6 py-4 text-slate-500 font-medium uppercase text-[10px]">{f.observation}</td>
                               <td className="px-6 py-4 text-right">
                                 <button
-                                  onClick={() => handleFix(selectedIssue.id)}
-                                  disabled={isFixing === selectedIssue.id}
+                                  onClick={() => handleFix(selectedIssue.id, i)}
+                                  disabled={isFixing === `${selectedIssue.id}-${i}`}
                                   className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all inline-flex items-center space-x-2 ${
-                                    isFixing === selectedIssue.id
+                                    isFixing === `${selectedIssue.id}-${i}`
                                       ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
                                       : 'bg-blue-600 text-white hover:bg-blue-700 border border-blue-600 shadow-sm'
                                   }`}
                                 >
-                                  {isFixing === selectedIssue.id ? (
-                                    <><div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /><span>Resolving...</span></>
+                                  {isFixing === `${selectedIssue.id}-${i}` ? (
+                                    <><div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /><span>Verifying...</span></>
                                   ) : (
                                     <><ShieldCheck size={12} /><span>Fix</span></>
                                   )}
@@ -634,112 +774,57 @@ function SecurityReportContent() {
           </div>
         </div>
       </div>
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: 20 }}
+            animate={{ opacity: toast.visible ? 1 : 0, y: toast.visible ? 0 : -20, x: 0 }}
+            exit={{ opacity: 0, y: -20, x: 20 }}
+            className="fixed top-6 right-6 z-[9999] max-w-md"
+          >
+            <div className={`flex items-start gap-3 px-5 py-4 rounded-2xl border shadow-2xl backdrop-blur-xl ${
+              toast.type === 'success'
+                ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-100'
+                : toast.type === 'error'
+                ? 'bg-red-950/90 border-red-500/30 text-red-100'
+                : 'bg-amber-950/90 border-amber-500/30 text-amber-100'
+            }`}>
+              <div className={`mt-0.5 flex-shrink-0 ${
+                toast.type === 'success' ? 'text-emerald-400' :
+                toast.type === 'error' ? 'text-red-400' : 'text-amber-400'
+              }`}>
+                {toast.type === 'success' ? <CheckCircle2 size={20} /> :
+                 toast.type === 'error' ? <XCircle size={20} /> :
+                 <AlertTriangle size={20} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">
+                  {toast.type === 'success' ? 'Verification Passed' :
+                   toast.type === 'error' ? 'Verification Failed' : 'Notice'}
+                </p>
+                <p className="text-[13px] font-semibold leading-snug">{toast.message}</p>
+              </div>
+              <button
+                onClick={() => {
+                  if (toastTimer.current) clearTimeout(toastTimer.current);
+                  setToast(prev => prev ? { ...prev, visible: false } : null);
+                  setTimeout(() => setToast(null), 400);
+                }}
+                className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity mt-0.5"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-// ─── Helper functions for enriching vulnerability display ─────────────────────
+// ─── Suspend Wrapper ────────────────────────────────────────────────────────
 
-function getSeverity(vulnName: string): string {
-  const critical = ['HTTP without HTTPS', '443 open without TLS'];
-  const high = ['Missing CSP header', 'Missing HSTS header', 'Missing NS record', 'Missing TXT record', 'Risky port exposed', 'Malicious IP Activity Detected'];
-  const medium = ['Missing X-Frame-Options', 'Missing X-Content-Type-Options', 'Missing MX record', 'Unexpected open port'];
-  if (critical.some(k => vulnName.includes(k))) return 'Critical';
-  if (high.some(k => vulnName.includes(k))) return 'High';
-  if (medium.some(k => vulnName.includes(k))) return 'Medium';
-  return 'High';
-}
-
-function getImpact(vulnName: string): number {
-  const impactMap: Record<string, number> = {
-    'HTTP without HTTPS': 20,
-    '443 open without TLS': 20,
-    'Missing HSTS header': 4,
-    'Missing CSP header': 3,
-    'Missing X-Frame-Options': 2,
-    'Missing X-Content-Type-Options': 2,
-    'Missing NS record': 2,
-    'Missing TXT record': 1,
-    'Missing MX record': 1,
-    'Risky port exposed': 10,
-    'Unexpected open port': 8,
-    'Malicious IP Activity Detected': 15,
-  };
-  for (const [key, val] of Object.entries(impactMap)) {
-    if (vulnName.includes(key)) return val;
-  }
-  return 5;
-}
-
-function getDescription(vulnName: string, affectedCount: number): string {
-  const descriptions: Record<string, string> = {
-    'HTTP without HTTPS': `Traffic is served over unencrypted HTTP with no HTTPS redirect. All data — including credentials and session tokens — is transmitted in plain text. Affects ${affectedCount} host(s).`,
-    '443 open without TLS': `Port 443 is open but TLS is not properly configured. This means HTTPS connections will fail or expose traffic. Affects ${affectedCount} host(s).`,
-    'Missing CSP header': `The Content-Security-Policy header is absent, leaving browsers unable to restrict which resources may be loaded. This enables XSS and data injection attacks. Affects ${affectedCount} host(s).`,
-    'Missing HSTS header': `Strict-Transport-Security is missing despite TLS being present. Without HSTS, browsers may allow downgrade attacks, stripping HTTPS to HTTP. Affects ${affectedCount} host(s).`,
-    'Missing X-Frame-Options': `The X-Frame-Options header is absent, leaving sites vulnerable to clickjacking attacks where a malicious page embeds your site in an invisible iframe. Affects ${affectedCount} host(s).`,
-    'Missing X-Content-Type-Options': `X-Content-Type-Options: nosniff is missing. Without it, browsers may perform MIME-type sniffing, which can allow certain injection attacks. Affects ${affectedCount} host(s).`,
-    'Missing NS record': `NS (Name Server) records are missing, which can cause DNS resolution failures and indicates subdomains may not have proper authoritative delegation. Affects ${affectedCount} host(s).`,
-    'Missing TXT record': `TXT records are absent, meaning no SPF or DMARC policies are in place. This leaves the domain open to email spoofing and phishing attacks. Affects ${affectedCount} host(s).`,
-    'Missing MX record': `MX records are absent. While mail delivery may not be intended, missing MX records can indicate incomplete DNS configuration. Affects ${affectedCount} host(s).`,
-    'Risky port exposed': `A risky port (e.g., 8080, 3306, 21) is open and publicly accessible. These ports are frequently targeted by scanners and automated attack tools. Affects ${affectedCount} host(s).`,
-    'Unexpected open port': `An unexpected port is open. Ports not explicitly needed increase the attack surface and may indicate running services that should be firewalled. Affects ${affectedCount} host(s).`,
-    'Malicious IP Activity Detected': `Infrastructure is associated with IPs known for malicious activity (spam, hacking, DDoS). We detected ${affectedCount} high-risk IP(s) in your configuration.`,
-  };
-  for (const [key, val] of Object.entries(descriptions)) {
-    if (vulnName.includes(key)) return val;
-  }
-  return `Automated vulnerability finding: ${vulnName}. Affects ${affectedCount} host(s). Review findings for details.`;
-}
-
-function getRemediation(vulnName: string): string {
-  const remediations: Record<string, string> = {
-    'HTTP without HTTPS': 'Configure a permanent 301 redirect from HTTP to HTTPS and enable HSTS on all affected hosts.',
-    '443 open without TLS': 'Provision a TLS certificate (Let\'s Encrypt is free) and configure the server to terminate TLS on port 443. Force HTTPS redirect on port 80.',
-    'Missing CSP header': 'Add a Content-Security-Policy header via your web server or CDN. A restrictive policy like default-src \'self\' should be the baseline.',
-    'Missing HSTS header': 'Set Strict-Transport-Security: max-age=31536000; includeSubDomains on your server or CDN settings.',
-    'Missing X-Frame-Options': 'Add X-Frame-Options: SAMEORIGIN (or DENY) to all HTTP responses across all subdomains.',
-    'Missing X-Content-Type-Options': 'Add X-Content-Type-Options: nosniff globally via reverse proxy, CDN rules, or framework middleware.',
-    'Missing NS record': 'Review DNS zone configuration and ensure each subdomain has valid NS records pointing to authoritative servers.',
-    'Missing TXT record': 'Publish SPF TXT record: v=spf1 include:... -all. Add DMARC policy at _dmarc: v=DMARC1; p=quarantine.',
-    'Missing MX record': 'If mail is not intended for these subdomains, publish a null MX record to explicitly indicate this and prevent abuse.',
-    'Risky port exposed': 'Close the risky port on all affected hosts or restrict access via firewall rules to trusted IPs only.',
-    'Unexpected open port': 'Audit the open port and close it if the running service is not needed. Otherwise restrict access via firewall.',
-    'Malicious IP Activity Detected': 'Contact your infrastructure provider to rotate IPs or investigate potential account compromise. Ensure all egress/ingress is restricted to legitimate traffic only.',
-  };
-  for (const [key, val] of Object.entries(remediations)) {
-    if (vulnName.includes(key)) return val;
-  }
-  return 'Review and remediate immediately. Consult your security team for detailed remediation steps.';
-}
-
-function getPort(vulnName: string): string {
-  if (vulnName.includes('443')) return '443';
-  if (vulnName.includes('HTTP without')) return '80';
-  if (vulnName.includes('port')) return 'Various';
-  return 'N/A';
-}
-
-function getCVSS(vulnName: string): string {
-  const cvssMap: Record<string, string> = {
-    'HTTP without HTTPS': '9.1',
-    '443 open without TLS': '9.8',
-    'Missing CSP header': '6.1',
-    'Missing HSTS header': '6.5',
-    'Missing X-Frame-Options': '5.4',
-    'Missing X-Content-Type-Options': '4.3',
-    'Missing NS record': '6.8',
-    'Missing TXT record': '7.1',
-    'Missing MX record': '5.0',
-    'Risky port exposed': '7.5',
-    'Unexpected open port': '6.5',
-    'Malicious IP Activity Detected': '8.2',
-  };
-  for (const [key, val] of Object.entries(cvssMap)) {
-    if (vulnName.includes(key)) return val;
-  }
-  return 'N/A';
-}
 
 export default function SecurityReport() {
   return (

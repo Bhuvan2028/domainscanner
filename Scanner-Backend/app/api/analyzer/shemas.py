@@ -14,11 +14,17 @@ class VulnerabilityEntry(BaseModel):
     subdomain: str
     ip: Optional[str] = None
     severity: str
+    breach_risk: Optional[str] = None
+    impact: Optional[int] = None
+    description: Optional[str] = None
+    remediation: Optional[str] = None
+    cvss: Optional[str] = None
     port: Optional[int] = None
     abuse_score: Optional[int] = None
     country: Optional[str] = None
     usage_type: Optional[str] = None
     isp: Optional[str] = None
+
 
 class ScanScoreResponse(BaseModel):
     scan_id: str

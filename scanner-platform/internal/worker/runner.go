@@ -76,6 +76,23 @@ func Run(ctx context.Context, job *models.ScanJob) (any, error) {
 
 	fmt.Println("Total Filtered Subdomains Found:", len(filter_pipeline_results.Data.([]interface{})), filter_res)
 
+	// Ensure root domain is in the list for collection
+	foundRoot := false
+	targetDomain := job.Target
+	if subs, ok := filter_pipeline_results.Data.([]interface{}); ok {
+		for _, s := range subs {
+			if m, ok := s.(map[string]any); ok {
+				if m["subdomain"] == targetDomain {
+					foundRoot = true
+					break
+				}
+			}
+		}
+		if !foundRoot {
+			filter_pipeline_results.Data = append(subs, map[string]any{"subdomain": targetDomain})
+		}
+	}
+
 	fmt.Println("Scanner 3 : Data collection")
 
 	collection_registry := core.NewCollectionRegistry()
@@ -100,26 +117,45 @@ func Run(ctx context.Context, job *models.ScanJob) (any, error) {
 		Status: "completed",
 	}
 
-	collection_res, err := send_webhook_notification(collection_payload)
+	_, err = send_webhook_notification(collection_payload)
 	if err != nil {
 		log.Printf("Failed to send webhook notification: %v", err)
 	}
 
-	fmt.Println("Total Results Found:", len(collection_data_results.Data.([]interface{})), collection_res)
+	// Structure data for backend: separate host and subdomains
+	var hostData map[string]interface{}
+	var subdomainsData []interface{}
 
-	// data := []any{}
+	if results, ok := collection_data_results.Data.([]interface{}); ok {
+		for _, item := range results {
+			if m, ok := item.(map[string]interface{}); ok {
+				if m["subdomain"] == targetDomain {
+					hostData = m
+					// Also include in subdomains as the "apex" entry
+					subdomainsData = append(subdomainsData, m)
+				} else {
+					subdomainsData = append(subdomainsData, m)
+				}
+			}
+		}
+	}
 
-	// for _, res := range collection_data_results.Data.([]interface{}) {
-	// 	data = append(data, res)
-	// }
+	if hostData == nil {
+		hostData = map[string]interface{}{"domain": targetDomain}
+	} else {
+		hostData["domain"] = targetDomain
+	}
 
 	scanResult := models.ScanResult{
 		ScanID:    job.ScanID,
 		Target:    job.Target,
-		Data:      map[string]interface{}{"subdomains": collection_data_results.Data},
+		Data:      map[string]interface{}{
+			"host":       hostData,
+			"subdomains": subdomainsData,
+		},
 		Timestamp: time.Now(),
 	}
-	fmt.Println("Final Results:", len(scanResult.Data.(map[string]interface{})["subdomains"].([]interface{})))
+	fmt.Println("Final Results:", len(subdomainsData), "subdomains sent")
 
 	res, err := send_scan_result_webhook(scanResult)
 
