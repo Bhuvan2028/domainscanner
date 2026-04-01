@@ -8,6 +8,7 @@ def init_tables():
     
     tables_cols = [
         ("users", "name", "VARCHAR(255)"),
+        ("assessment_results", "user_id", "VARCHAR(36)"),
         ("scan_request", "user_id", "VARCHAR(36)"),
         ("scan_result", "user_id", "VARCHAR(36)"),
         ("scan_summary", "user_id", "VARCHAR(36)"),

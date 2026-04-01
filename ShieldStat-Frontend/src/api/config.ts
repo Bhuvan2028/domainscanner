@@ -54,6 +54,9 @@ export async function apiFetch<T>(endpoint: string, options: CustomRequestInit =
     if (error.name === 'AbortError') {
       throw new Error('Request timed out. Please check your connection.');
     }
+    if (error.message === 'Failed to fetch') {
+      throw new Error('Backend server is not reachable. Make sure the API server is running on ' + API_BASE_URL);
+    }
     throw error;
   }
 }

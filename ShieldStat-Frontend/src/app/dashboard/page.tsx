@@ -33,17 +33,21 @@ function AssessmentOverviewContent() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [latestData, historyData] = await Promise.all([
-          getLatestAssessment(),
-          getAssessmentHistory(10)
-        ]);
-        
+        const historyData = await getAssessmentHistory(10);
+        setHistory(historyData || []);
+      } catch (err) {
+        console.error('Failed to fetch assessment history:', err);
+      }
+
+      try {
+        const latestData = await getLatestAssessment();
         if (latestData && latestData.summary) {
           setAssessment(latestData);
         }
-        setHistory(historyData || []);
-      } catch (err) {
-        console.error('Failed to fetch assessment data:', err);
+      } catch (err: any) {
+        if (!err.message?.includes('No assessment results found')) {
+          console.error('Failed to fetch latest assessment:', err);
+        }
       } finally {
         setLoading(false);
       }
@@ -63,7 +67,7 @@ function AssessmentOverviewContent() {
           <p className="text-sm text-slate-500 font-medium tracking-tight">Enterprise-wide security posture and maturity monitoring.</p>
         </div>
         <div className="flex items-center gap-3">
-           <Link href="/dashboard/new-scan">
+            <Link href="/">
               <button className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center space-x-2 rounded-xl active:scale-95 shadow-sm">
                 <Search className="w-4 h-4" />
                 <span>New Quick Scan</span>
