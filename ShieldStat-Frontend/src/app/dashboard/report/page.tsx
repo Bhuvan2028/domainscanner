@@ -23,11 +23,16 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  X
+  X,
+  UserPlus,
+  ChevronDown,
+  Trash2,
 } from 'lucide-react';
 
 import { submitForAnalyzer, type GeneratedScoreResponse, type VulnerabilityEntry } from '@/api/analyzer';
 import { submitFix, VULN_NAME_TO_FIX_TYPE, CATEGORY_TO_FIX_CATEGORY } from '@/api/fix';
+import { useAuth } from '@/context/AuthContext';
+import { getScanAssignments, assignIssue, removeAssignment, getAcceptedMembers, type IssueAssignment } from '@/api/assignment';
 
 // ─── All 10 security factor definitions ──────────────────────────────────────
 const ALL_FACTORS: { id: string; icon: React.ReactNode }[] = [
@@ -56,13 +61,34 @@ function SecurityReportContent() {
   const searchParams = useSearchParams();
   const domain = searchParams.get('domain') || 'unknown.com';
   const scanId = searchParams.get('scan_id');
+  const { isOwner, user } = useAuth();
 
   const [globalScore, setGlobalScore] = useState(0);
   const [activeFactor, setActiveFactor] = useState('');
-  const [activeIssueCategory, setActiveIssueCategory] = useState('All');
   const [selectedIssue, setSelectedIssue] = useState<any>(null);
   const [isFixing, setIsFixing] = useState<string | null>(null);
   const [fixedIssues, setFixedIssues] = useState<number[]>([]);
+  const [assignments, setAssignments] = useState<IssueAssignment[]>([]);
+  const [showAssignDropdown, setShowAssignDropdown] = useState(false);
+  const [assignError, setAssignError] = useState('');
+  const members = isOwner ? getAcceptedMembers() : [];
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scanId) {
+      setAssignments(getScanAssignments(scanId));
+    }
+  }, [scanId, selectedIssue]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowAssignDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const mainRef = useRef<HTMLDivElement>(null);
 
   const [dynamicIssuesData, setDynamicIssuesData] = useState<Record<string, any[]>>({});
@@ -168,6 +194,34 @@ function SecurityReportContent() {
         setIsLoading(false);
       });
   }, [scanId]);
+
+  useEffect(() => {
+    if (scanId) {
+      setAssignments(getScanAssignments(scanId));
+    }
+  }, [scanId, selectedIssue]);
+
+  const handleAssignIssue = (memberId: string, memberName: string) => {
+    if (!scanId || !selectedIssue) return;
+    try {
+      assignIssue(scanId, selectedIssue.title, memberId, memberName);
+      setAssignments(getScanAssignments(scanId));
+      setShowAssignDropdown(false);
+      setAssignError('');
+    } catch (err: any) {
+      setAssignError(err.message);
+    }
+  };
+
+  const handleRemoveAssignment = (assignmentId: string) => {
+    if (!scanId) return;
+    removeAssignment(assignmentId, scanId);
+    setAssignments(getScanAssignments(scanId));
+  };
+
+  const getAssignmentForIssue = (issueTitle: string) => {
+    return assignments.find((a) => a.issueTitle === issueTitle);
+  };
 
 
   // Counts
@@ -342,11 +396,15 @@ function SecurityReportContent() {
     return () => ctx.revert();
   }, [isLoading, globalScore]);
 
-  const factorIssues = (dynamicIssuesData[activeFactor] || []).filter(i => !fixedIssues.includes(i.id));
-  const factorSubCategories = ['All', ...Array.from(new Set(factorIssues.map((i: any) => i.category)))];
-  const activeIssues = activeIssueCategory === 'All'
-    ? factorIssues
-    : factorIssues.filter((i: any) => i.category === activeIssueCategory);
+  const factorIssues = (dynamicIssuesData[activeFactor] || []).filter(i => {
+    if (fixedIssues.includes(i.id)) return false;
+    if (!isOwner && user) {
+      const memberAssignments = assignments.filter((a) => a.assignedToId === user.id);
+      const assignedTitles = new Set(memberAssignments.map((a) => a.issueTitle));
+      return assignedTitles.has(i.title);
+    }
+    return true;
+  });
 
   // Score label
   const scoreLabel = globalScore >= 90 ? 'Excellent' : globalScore >= 75 ? 'Fair' : globalScore >= 60 ? 'Needs Work' : 'Critical';
@@ -464,7 +522,6 @@ function SecurityReportContent() {
                 key={factor.id}
                 onClick={() => {
                   setActiveFactor(factor.id);
-                  setActiveIssueCategory('All');
                   setSelectedIssue(null);
                 }}
                 animate={{
@@ -558,31 +615,9 @@ function SecurityReportContent() {
                     </div>
                   </div>
 
-                  {/* Sub-category filters */}
-                  <div className="flex space-x-3 mb-8 overflow-x-auto no-scrollbar pb-2">
-                    {factorSubCategories.map((cat) => {
-                      const countInCat = cat === 'All' ? factorIssues.length : factorIssues.filter((i: any) => i.category === cat).length;
-                      const isActive = activeIssueCategory === cat;
-                      return (
-                        <button
-                          key={cat}
-                          onClick={() => setActiveIssueCategory(cat)}
-                          className={`flex items-center space-x-2 px-5 py-2 rounded-lg border transition-all duration-300 whitespace-nowrap ${
-                            isActive
-                              ? 'bg-slate-900 text-white border-slate-800 shadow-xl shadow-slate-900/10'
-                              : 'bg-white text-slate-500 border-slate-100 hover:border-slate-200'
-                          }`}
-                        >
-                          <span className="text-[13px] font-black">{cat}</span>
-                          <span className={`text-[10px] font-bold ${isActive ? 'text-white/70' : 'text-slate-500'}`}>({countInCat})</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
                   <div className="space-y-4">
-                    {activeIssues.length > 0 ? (
-                      activeIssues.map((issue) => (
+                    {factorIssues.length > 0 ? (
+                      factorIssues.map((issue) => (
                         <div
                           key={issue.id}
                           onClick={() => setSelectedIssue(issue)}
@@ -660,6 +695,111 @@ function SecurityReportContent() {
                     </button>
                     <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">{selectedIssue.title}</h3>
                   </div>
+
+                  {/* Assignment Section (Owner Only) */}
+                  {isOwner && (
+                    <div className="bg-slate-50 rounded-xl p-5 border border-slate-100 space-y-3 relative">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Users size={14} className="text-slate-400" />
+                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">Assignment</p>
+                        </div>
+                        <div className="relative" ref={dropdownRef}>
+                          <button
+                            onClick={() => { setShowAssignDropdown(!showAssignDropdown); setAssignError(''); }}
+                            className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-slate-600 hover:border-slate-300 transition-colors uppercase tracking-widest"
+                          >
+                            <UserPlus size={12} />
+                            <span>Assign To</span>
+                            <ChevronDown size={12} className={`transition-transform ${showAssignDropdown ? 'rotate-180' : ''}`} />
+                          </button>
+
+                          <AnimatePresence>
+                            {showAssignDropdown && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -8 }}
+                                className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden"
+                              >
+                                <div className="p-2">
+                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-3 py-2">Select Team Member</p>
+                                  {members.length > 0 ? (
+                                    members.map((member) => (
+                                      <button
+                                        key={member.id}
+                                        onClick={() => handleAssignIssue(member.id, member.name)}
+                                        className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-slate-50 rounded-lg transition-colors text-left"
+                                      >
+                                        <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-[10px] font-black flex-shrink-0">
+                                          {member.name[0].toUpperCase()}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs font-bold text-slate-900 truncate">{member.name}</p>
+                                          <p className="text-[10px] text-slate-400 truncate">{member.email}</p>
+                                        </div>
+                                      </button>
+                                    ))
+                                  ) : (
+                                    <div className="px-3 py-4 text-center">
+                                      <p className="text-xs text-slate-400 font-medium">No team members yet</p>
+                                      <p className="text-[10px] text-slate-300 mt-1">Add members in Profile</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+
+                      {assignError && (
+                        <p className="text-xs text-red-500 font-medium flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> {assignError}
+                        </p>
+                      )}
+
+                      {/* Current Assignments */}
+                      {(() => {
+                        const currentAssignment = getAssignmentForIssue(selectedIssue.title);
+                        if (currentAssignment) {
+                          return (
+                            <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-100">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-black">
+                                  {currentAssignment.assignedToName[0].toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-slate-900">{currentAssignment.assignedToName}</p>
+                                  <p className="text-[10px] text-slate-400">Assigned {currentAssignment.createdAt}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleRemoveAssignment(currentAssignment.id)}
+                                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                                title="Remove assignment"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Member view: show who this is assigned to */}
+                  {!isOwner && (() => {
+                    const currentAssignment = getAssignmentForIssue(selectedIssue.title);
+                    if (!currentAssignment) return null;
+                    return (
+                      <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                        <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em] mb-2">Assigned To You</p>
+                        <p className="text-xs text-blue-700 font-medium">This issue has been assigned to you by the team owner.</p>
+                      </div>
+                    );
+                  })()}
 
                   {/* Summary Cards */}
                   <div className="grid grid-cols-2 gap-4">

@@ -1,15 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy.orm import Session
 from app.api.analyzer.shemas import ScanScoreResponse
 from app.db.base import get_db
 from app.api.analyzer.controller import calculate_score
 from app.db.models import ScanSummary,ScanResult
-from sqlalchemy.orm import Session
+from app.core.middleware import protect
 router = APIRouter(prefix="/score",tags=["Scoring"])
 
 @router.post("/{scan_id}")
-def generate_score(scan_id: str, db: Session = Depends(get_db)):
+def generate_score(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(protect)
+):
     try:
         scans = db.query(ScanSummary).filter(ScanSummary.scan_id == scan_id).first()
 
@@ -44,7 +47,11 @@ def generate_score(scan_id: str, db: Session = Depends(get_db)):
         )
 
 @router.post("/rescore/{scan_id}")
-def force_rescore(scan_id: str, db: Session = Depends(get_db)):
+def force_rescore(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(protect)
+):
     """Force re-generation of score with latest analysis logic (including IP reputation)."""
     try:
 
@@ -57,9 +64,14 @@ def force_rescore(scan_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/get_score/{scan_id}")
-def get_score(scan_id: str, db: Session = Depends(get_db)):
+def get_score(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(protect)
+):
     score = db.query(ScanSummary).filter(
-        ScanSummary.scan_id == scan_id
+        ScanSummary.scan_id == scan_id,
+        ScanSummary.user_id == current_user["user_id"]
     ).first()
     if not score:
         raise HTTPException(
@@ -69,9 +81,14 @@ def get_score(scan_id: str, db: Session = Depends(get_db)):
     return score
 
 @router.get("/get_raw_data/{scan_id}")
-def get_raw_data(scan_id: str, db: Session = Depends(get_db)):
+def get_raw_data(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(protect)
+):
     score = db.query(ScanResult).filter(
-        ScanResult.scan_id == scan_id
+        ScanResult.scan_id == scan_id,
+        ScanResult.user_id == current_user["user_id"]
     ).first()
     if not score:
         raise HTTPException(
@@ -81,6 +98,11 @@ def get_raw_data(scan_id: str, db: Session = Depends(get_db)):
     return score.results
 
 @router.get("/get_all")
-def get_all_scores(db: Session = Depends(get_db)):
-    scores = db.query(ScanResult).all()
+def get_all_scores(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(protect)
+):
+    scores = db.query(ScanResult).filter(
+        ScanResult.user_id == current_user["user_id"]
+    ).all()
     return [score.scan_id for score in scores]

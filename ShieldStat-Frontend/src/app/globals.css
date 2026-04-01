@@ -3,6 +3,7 @@
 @theme {
   --font-sans: "Inter", sans-serif;
   --color-brand: #3b2a8d; /* Deep purple from 'Upgrade today' */
+  --color-primary: #3b2a8d; /* Support for text-primary classes in new layout */
   --color-brand-light: #5f42d6; /* Purple from main card */
   --color-status-success: #1fae62; /* Green from the score 100 */
   --color-status-warning: #f1922c; /* Orange from score 86 */

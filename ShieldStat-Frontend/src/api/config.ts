@@ -11,12 +11,10 @@ export interface CustomRequestInit extends RequestInit {
 export async function apiFetch<T>(endpoint: string, options: CustomRequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
-  // Create AbortController for timeout
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 60000); // Dynamic timeout or 60s default
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 60000);
   
-  // Try to get auth token from localStorage if we had authentication
-  // const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   
   const headers = new Headers(options.headers || {});
   if (!headers.has('Content-Type')) {
@@ -24,9 +22,9 @@ export async function apiFetch<T>(endpoint: string, options: CustomRequestInit =
   }
   headers.set('accept', 'application/json');
   
-  // if (token) {
-  //   headers.set('Authorization', `Bearer ${token}`);
-  // }
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
 
   try {
     const response = await fetch(url, {

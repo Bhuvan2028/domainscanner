@@ -2,19 +2,27 @@ from fastapi import APIRouter, Depends
 from app.api.scanner.service import create_scan_task_to_queue
 from app.api.scanner.schemas import RequestScanTask
 from app.core.redis_queue import RedisClient
+from app.core.middleware import protect
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 import uuid, json
 import redis.asyncio as redis
-from app.db.models import ScanResult, ScanRequest, ScanSummary
+from app.db.models import ScanResult, ScanRequest, ScanSummary, User
 from fastapi import HTTPException
 redis_client = RedisClient()
 
 router = APIRouter(prefix='/api/scanner', tags=["scanner"])
 
 @router.post("/register-scan-task")
-async def register_scan_task(request: RequestScanTask,db: Session = Depends(get_db)):
-    return create_scan_task_to_queue(db, request)
+async def register_scan_task(
+    request: RequestScanTask,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(protect)
+):
+    user = db.query(User).filter(User.user_id == current_user["user_id"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return create_scan_task_to_queue(db, request, current_user["user_id"], registered_domain=user.domain)
 
 
 # for testing purpose only, to check the scan queue in redis
@@ -29,9 +37,14 @@ async def clear_scan_queue():
     return {"message": "Scan queue cleared"}
 
 @router.get("/scan-result")
-def get_scan_result(scan_id: str, db: Session = Depends(get_db)):
+def get_scan_result(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(protect)
+):
     scan = db.query(ScanResult).filter(
-        ScanResult.scan_id == scan_id
+        ScanResult.scan_id == scan_id,
+        ScanResult.user_id == current_user["user_id"]
     ).first()
 
     if not scan:
@@ -40,11 +53,15 @@ def get_scan_result(scan_id: str, db: Session = Depends(get_db)):
     return scan.results
 
 @router.get("/history")
-def get_scan_history(db: Session = Depends(get_db)):
+def get_scan_history(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(protect)
+):
     from sqlalchemy import or_
     results = db.query(ScanRequest, ScanSummary)\
         .outerjoin(ScanSummary, ScanRequest.scan_id == ScanSummary.scan_id)\
         .filter(
+            ScanRequest.user_id == current_user["user_id"],
             or_(
                 ScanRequest.data.op("->>")("type") != "malware",
                 ScanRequest.data.op("->>")("type").is_(None),
@@ -60,7 +77,7 @@ def get_scan_history(db: Session = Depends(get_db)):
         is_stuck = False
         if not summary and req.time:
             time_diff = datetime.datetime.utcnow() - req.time
-            if time_diff.total_seconds() > 900:  # 15 minutes
+            if time_diff.total_seconds() > 900:
                 is_stuck = True
                 
         if summary:

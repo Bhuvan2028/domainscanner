@@ -42,7 +42,7 @@ def mapRiskToColor(risk: str) -> str:
     return "gray"
 
 
-def submit_assessment_logic(body, db: Session):
+def submit_assessment_logic(body, db: Session, user_id: str = None):
     answers = body.answers
     questions = db.query(Question).all()
 
@@ -150,6 +150,7 @@ def submit_assessment_logic(body, db: Session):
     }
 
     new_result = AssessmentResult(
+        user_id=user_id,
         summary=summary,
         answers=processedAnswers,
     )
@@ -161,12 +162,11 @@ def submit_assessment_logic(body, db: Session):
     return new_result
 
 
-def get_latest_assessment(db: Session):
-    result = (
-        db.query(AssessmentResult)
-        .order_by(AssessmentResult.created_at.desc())
-        .first()
-    )
+def get_latest_assessment(db: Session, user_id: str = None):
+    query = db.query(AssessmentResult)
+    if user_id:
+        query = query.filter(AssessmentResult.user_id == user_id)
+    result = query.order_by(AssessmentResult.created_at.desc()).first()
 
     if not result:
         raise HTTPException(
@@ -176,11 +176,9 @@ def get_latest_assessment(db: Session):
 
     return result
 
-def get_assessment_history(db: Session, limit: int = 10):
-    results = (
-        db.query(AssessmentResult)
-        .order_by(AssessmentResult.created_at.desc())
-        .limit(limit)
-        .all()
-    )
+def get_assessment_history(db: Session, user_id: str = None, limit: int = 10):
+    query = db.query(AssessmentResult)
+    if user_id:
+        query = query.filter(AssessmentResult.user_id == user_id)
+    results = query.order_by(AssessmentResult.created_at.desc()).limit(limit).all()
     return results

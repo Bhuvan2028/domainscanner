@@ -19,4 +19,4 @@ class FixResultRequest(BaseModel):
     scan_id: str
     domain: str
     fix_type: str
-    result: Any
+    result: bool

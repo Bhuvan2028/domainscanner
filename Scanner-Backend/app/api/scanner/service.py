@@ -10,13 +10,14 @@ from app.db.models import ScanResult, ScanRequest
 redis_client = RedisClient()
 
 
-def create_scan_task_to_queue(db: Session, data: RequestScanTask):
+def create_scan_task_to_queue(db: Session, data: RequestScanTask, user_id: str = None, registered_domain: str = None):
     target = data.target.strip().lower()
-    # Strip protocol (http:// or https://)
     if "://" in target:
         target = target.split("://")[1]
-    # Strip path or trailing slash (e.g., example.com/path -> example.com)
     target = target.split("/")[0]
+
+    if registered_domain and target != registered_domain:
+        raise HTTPException(status_code=403, detail=f"You can only scan your registered domain: {registered_domain}")
 
     import socket
     try:
@@ -30,11 +31,13 @@ def create_scan_task_to_queue(db: Session, data: RequestScanTask):
 
         new_request = ScanRequest(
             scan_id=scan_id,
+            user_id=user_id,
             domain=target
         )
 
         new_result = ScanResult(
             scan_id=scan_id,
+            user_id=user_id,
             domain=target,
             results={
                 "status": "pending",
@@ -48,8 +51,6 @@ def create_scan_task_to_queue(db: Session, data: RequestScanTask):
         scan_job = {
             "scan_id": scan_id,
             "target": target,
-            "status": "pending",
-            "progress": 0
         }
 
         redis_client.PushToQueue(data=scan_job)

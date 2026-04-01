@@ -3,6 +3,7 @@ from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.redis_queue import RedisClient
+from app.core.middleware import protect
 from app.api.fix.schemas import FixRequest, FixResponse, FixResultRequest
 from app.db.base import get_db
 from app.db.models import ScanSummary, ScanResult
@@ -227,9 +228,22 @@ def rebuild_category_scores(summary: ScanSummary):
 
 
 @router.post("/submit", response_model=FixResponse)
-def submit_fix(request: FixRequest):
+def submit_fix(
+    request: FixRequest,
+    current_user: dict = Depends(protect)
+):
+    fix_job = {
+        "scan_id": request.scan_id,
+        "domain": request.domain,
+        "fix_type": request.fix_type,
+        "data": {
+            "category": request.data.get("category", "") if isinstance(request.data, dict) else "",
+            "subdomain": request.data.get("subdomain", request.domain) if isinstance(request.data, dict) else request.domain,
+            "port": request.data.get("port") if isinstance(request.data, dict) else None,
+        }
+    }
     try:
-        redis_client.redis.rpush(QUEUE_NAME, json.dumps(request.model_dump()))
+        redis_client.redis.rpush(QUEUE_NAME, json.dumps(fix_job))
     except Exception:
         raise HTTPException(
             status_code=503,
@@ -244,30 +258,30 @@ def submit_fix(request: FixRequest):
 
 
 @router.post("/result", response_model=FixResponse)
-async def submit_fix_result(request: FixResultRequest, db: Session = Depends(get_db)):
+async def submit_fix_result(
+    request: FixResultRequest,
+    db: Session = Depends(get_db),
+):
     should_reload = False
     try:
-        if is_fix_successful(request.result):
+        if request.result:
             issue_key = FIX_TYPE_TO_ISSUE_KEY.get(request.fix_type)
             category = FIX_TYPE_TO_CATEGORY.get(request.fix_type)
             if issue_key and category:
                 summary = db.query(ScanSummary).filter(
-                    ScanSummary.scan_id == request.scan_id
+                    ScanSummary.scan_id == request.scan_id,
                 ).first()
                 if summary:
                     issue_removed = remove_fixed_issue(summary, issue_key, request.domain, category)
                     if issue_removed:
-                        # Sync categorized_vulnerabilities with updated category columns
                         sync_categorized_vulnerabilities(summary)
                         
-                        # Recalculate scores
                         scan_result = db.query(ScanResult).filter(
-                            ScanResult.scan_id == request.scan_id
+                            ScanResult.scan_id == request.scan_id,
                         ).first()
                         if scan_result:
                             recalculate_summary_score(summary, scan_result)
                         
-                        # Rebuild category scores
                         rebuild_category_scores(summary)
                         
                         db.add(summary)
