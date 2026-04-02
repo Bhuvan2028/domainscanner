@@ -196,7 +196,9 @@ export default function AdminUsersPage() {
                                     <div className="flex justify-between items-start">
                                       <p className="text-sm font-bold text-slate-900 group-hover:text-[#3b2a8d] mb-0.5">{member.name}</p>
                                       {member.role === 'SUB_MEMBER' && (
-                                        <LockKeyhole className="w-3 h-3 text-slate-400" title="Restricted Login" />
+                                        <span title="Restricted Login">
+                                          <LockKeyhole className="w-3 h-3 text-slate-400" />
+                                        </span>
                                       )}
                                     </div>
                                     <p className="text-[11px] font-medium text-slate-500 mb-2">{member.email}</p>
