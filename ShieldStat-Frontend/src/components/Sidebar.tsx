@@ -16,7 +16,9 @@ import {
   ChevronLeft,
   Shield,
   Users,
-  LogIn
+  LogIn,
+  Globe,
+  Settings
 } from 'lucide-react';
 import { Logo } from './Logo';
 import { useSidebar } from '@/context/SidebarContext';
@@ -32,6 +34,13 @@ const ownerNavItems = [
 
 const memberNavItems = [
   { id: 'my-issues', label: 'My Issues', icon: <Shield />, path: '/dashboard/my-issues' },
+];
+
+const adminNavItems = [
+  { id: 'telemetry', label: 'Telemetry', icon: <BarChart3 />, path: '/admin' },
+  { id: 'operators', label: 'Operators', icon: <Users />, path: '/admin/users' },
+  { id: 'assets', label: 'Assets', icon: <Globe />, path: '/admin/domains' },
+  { id: 'settings', label: 'System Config', icon: <Settings />, path: '/admin/settings' },
 ];
 
 export const Sidebar: React.FC = () => {
@@ -66,7 +75,8 @@ export const Sidebar: React.FC = () => {
 
   const profilePath = '/dashboard/profile';
 
-  const visibleNavItems = isOwner ? ownerNavItems : isMember ? memberNavItems : [];
+  const isAdminRoute = pathname.startsWith('/admin');
+  const visibleNavItems = isAdminRoute ? adminNavItems : isOwner ? ownerNavItems : isMember ? memberNavItems : [];
 
   return (
     <aside 
